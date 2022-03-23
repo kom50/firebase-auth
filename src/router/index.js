@@ -27,6 +27,20 @@ const routes = [
     component: function () {
       return import(/* webpackChunkName: "about" */ '../views/LoginView.vue')
     }
+  },
+  {
+    path: '/phone',
+    name: 'phone',
+    component: function () {
+      return import(/* webpackChunkName: "about" */ '../views/PhoneView.vue')
+    }
+  },
+  {
+    path: '/firestore',
+    name: 'Firestore',
+    component: function () {
+      return import(/* webpackChunkName: "about" */ '../views/FirestoreView.vue')
+    }
   }
 ]
 

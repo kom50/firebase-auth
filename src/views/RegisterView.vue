@@ -23,19 +23,32 @@
                 </p>
             </div>
             <div>
-                <div class="recaptcha-container"></div>
                 <button @click="googleToLogin">Login with google</button><br />
                 <br />
                 <button @click="githubToLogin">Login with GitHub</button><br />
+
                 <br />
-                <button @click="recaptchaVerifierHandler">ReCAptcha</button>
+                <button v-show="isMerged" @click="mergeAccount">
+                    Merge Account
+                </button>
+
+                <button @click="githubToLoginRedirect">
+                    githubToLoginRedirect with GitHub</button
+                ><br />
+                <br />
+                <hr />
+
+                <!-- :TODO Phone Number-->
+                <router-link to="phone-page"
+                    >Login with phone number</router-link
+                >
             </div>
         </div>
     </div>
 </template>
 
 <script>
-import { reactive, toRefs } from "vue";
+import { reactive, ref, toRefs } from "vue";
 import {
     getAuth,
     createUserWithEmailAndPassword,
@@ -46,18 +59,29 @@ import {
     sendSignInLinkToEmail,
     RecaptchaVerifier,
     GithubAuthProvider,
+    signInWithRedirect,
+    fetchSignInMethodsForEmail,
+    linkWithCredential,
+    OAuthProvider,
+    FacebookAuthProvider,
+    getRedirectResult,
 } from "firebase/auth";
-import app from "@/firebase";
+import auth from "@/firebase";
 import { useRouter } from "vue-router";
 
 export default {
+    //TODO
     setup(props) {
         const state = reactive({
             email: "",
             password: "",
         });
+
+        const pendingCredRef = ref(null);
+        const providerRef = ref(null);
+        const isMerged = ref(false);
+
         const router = useRouter();
-        const auth = getAuth(app);
 
         const submitHandler = (event) => {
             console.log("Submit handler", state.email);
@@ -151,26 +175,13 @@ export default {
             }
         };
 
-        const recaptchaVerifierHandler = () => {
-            console.log("Recaptcha");
-            window.recaptchaVerifier = new RecaptchaVerifier(
-                "recaptcha-container",
-                {
-                    size: "normal",
-                    callback: (response) => {
-                        console.log("response", response);
-                    },
-                    "expired-callback": () => {
-                        console.log("response expired");
-                    },
-                },
-                auth
-            );
-        };
+        /* Phone Number */
+        //TODO
+        // console.log("Recaptcha");
 
+        /* Phone Number End */
         //  Google sign In
         const googleToLogin = () => {
-            const auth = getAuth(app);
             const provider = new GoogleAuthProvider();
 
             signInWithPopup(auth, provider)
@@ -181,6 +192,7 @@ export default {
                     const token = credential.accessToken;
                     // The signed-in user info.
                     const user = result.user;
+                    console.log(" google sign in ", result);
                 })
                 .catch((error) => {
                     // Handle Errors here.
@@ -191,38 +203,235 @@ export default {
                     // The AuthCredential type that was used.
                     const credential =
                         GoogleAuthProvider.credentialFromError(error);
+                    console.log("error google sign in ", error);
                 });
         };
-        function githubToLogin() {
+
+        async function githubToLogin() {
             console.log("githubToLogin ");
             const provider = new GithubAuthProvider();
-            provider.addScope("repo");
-            signInWithPopup(auth, provider)
-                .then((result) => {
-                    // This gives you a GitHub Access Token. You can use it to access the GitHub API.
-                    const credential =
-                        GithubAuthProvider.credentialFromResult(result);
-                    const token = credential.accessToken;
+            try {
+                const result = await signInWithPopup(auth, provider);
+                // This gives you a GitHub Access Token. You can use it to access the GitHub API.
+                const credential =
+                    GithubAuthProvider.credentialFromResult(result);
+                const token = credential.accessToken;
+                // The signed-in user info.
+                const user = result.user;
+                console.log("user github ", user, token);
+            } catch (error) {
+                console.log("Error Github  ", error.code);
+                console.log("Error Github  ", error.customData.email);
+                console.log("Error Github  ", error.customData.credential);
+                console.log(
+                    "Error Github  ",
+                    OAuthProvider.credentialFromError(error)
+                );
+                //User already sign In with other method with same email
+                //auth/account-exists-with-different-credential
+                if (
+                    error.customData.email &&
+                    error.code ===
+                        "auth/account-exists-with-different-credential"
+                ) {
+                    var pendingCred = OAuthProvider.credentialFromError(error);
+                    // The provider account's email address.fetchSignInMethodsForEmail
+                    var email = error.customData.email;
+                    // Get sign-in methods for this email.
+                    console.log("pendingCred", pendingCred, email);
+                    fetchSignInMethodsForEmail(auth, email).then(function (
+                        methods
+                    ) {
+                        console.log("fetchSignInMethodsForEmail", methods);
+                        if (methods[0] === "password") {
+                            console.log("Password ");
+                            // Asks the user their password.
+                            // In real scenario, you should handle this asynchronously.
+                            // var password = promptUserForPassword();
+                            var password = prompt("Enter user password");
+                            signInWithEmailAndPassword(auth, email, password)
+                                .then(function (result) {
+                                    // Step 4a.
+                                    return result.user.linkWithCredential(
+                                        pendingCred
+                                    );
+                                })
+                                .then(function () {
+                                    // Facebook account successfully linked to the existing Firebase user.
+                                    // goToApp();
+                                    console.log(
+                                        "Github account successfully linked to the existing Firebase user."
+                                    );
+                                    router.push("/");
+                                });
+                            return;
+                        }
+                        isMerged.value = true;
+                        //    Variables
 
-                    // The signed-in user info.
-                    const user = result.user;
-                    console.log("user github ", user, token);
-                })
-                .catch((err) => {
-                    console.log("Error Github  ", err);
-                });
+                        providerRef.value = getProvider(methods[0]);
+                        pendingCredRef.value = pendingCred;
+
+                        // console.log(getProvider(pendingCred.providerId));
+                        // console.log(pendingCred.providerId, methods[0]);
+
+                        // var provider = getProvider(methods[0]);
+                        // signInWithPopup(auth, provider).then(function (result) {
+                        //     console.log("result.user", result.user);
+
+                        //     linkWithCredential(result.user, pendingCred).then(
+                        //         function (usercred) {
+                        //             // Facebook account successfully linked to the existing Firebase user.
+                        //             console.log("Goto app ", usercred);
+                        //             console.log(
+                        //                 "Github account successfully linked to the existing Firebase user."
+                        //             );
+                        //             router.push("/");
+                        //         }
+                        //     );
+                        // });
+                    });
+                }
+            }
         }
+
+        function mergeAccount() {
+            console.log(
+                "providerRef.value",
+                providerRef.value,
+                pendingCredRef.value
+            );
+            // console.log(getProvider(pendingCred.providerId));
+            // console.log(pendingCred.providerId, methods[0]);
+
+            // var provider = getProvider(methods[0]);
+            signInWithPopup(auth, providerRef.value).then(function (result) {
+                console.log("result.user", result.user);
+
+                linkWithCredential(result.user, pendingCredRef.value).then(
+                    function (usercred) {
+                        // Github account successfully linked to the existing Firebase user.
+                        console.log("Goto app ", usercred);
+                        console.log(
+                            "Github account successfully linked to the existing Firebase user."
+                        );
+                        router.push("/");
+                    }
+                );
+            });
+        }
+
+        function getProvider(providerId) {
+            switch (providerId) {
+                case "google.com":
+                    return new GoogleAuthProvider();
+                case "facebook.com":
+                    return new FacebookAuthProvider();
+                case "github.com":
+                    return new GithubAuthProvider();
+                default:
+                    throw new Error(
+                        `No provider implemented for ${providerId}`
+                    );
+            }
+        }
+
+        function githubToLoginRedirect() {
+            console.log("githubToLoginRedirect");
+            const auth = getAuth(app);
+            const provider = new GithubAuthProvider();
+            signInWithRedirect(auth, provider);
+        }
+        getRedirectResult(auth)
+            .then((result) => {
+                // This gives you a Github Access Token. You can use it to access the Github API.
+                const credential =
+                    GithubAuthProvider.credentialFromResult(result);
+                const token = credential.accessToken;
+
+                const user = result.user;
+                console.log("get Redirect", user);
+            })
+            .catch((error) => {
+                // Handle Errors here.
+                // const errorCode = error.code;
+                // const errorMessage = error.message;
+                // // The email of the user's account used.
+                // const email = error.customData.email;
+                // // AuthCredential type that was used.
+                // // const credential =
+                // //     GithubAuthProvider.credentialFromError(error);
+                // // ...
+                // console.log("get credential", email);
+
+                //User already sign In with other method with same email
+                //auth/account-exists-with-different-credential
+
+                if (
+                    error.code ===
+                    "auth/account-exists-with-different-credential"
+                ) {
+                    var pendingCred = OAuthProvider.credentialFromError(error);
+                    // The provider account's email address.fetchSignInMethodsForEmail
+                    // var email = error.customData.email;
+                    // Get sign-in methods for this email.
+                    const email = error.customData.email;
+                    console.log("pendingCred", pendingCred, email);
+                    fetchSignInMethodsForEmail(auth, email).then(function (
+                        methods
+                    ) {
+                        console.log("fetchSignInMethodsForEmail", methods);
+                        if (methods[0] === "password") {
+                            console.log("Password ");
+                            // Asks the user their password.
+                            // In real scenario, you should handle this asynchronously.
+                            // var password = promptUserForPassword();
+                            var password = prompt("Enter user password");
+                            signInWithEmailAndPassword(auth, email, password)
+                                .then(function (result) {
+                                    // Step 4a.
+                                    return result.user.linkWithCredential(
+                                        pendingCred
+                                    );
+                                })
+                                .then(function () {
+                                    // Github account successfully linked to the existing Firebase user.
+                                    // goToApp();
+                                    console.log(
+                                        "Github account successfully linked to the existing Firebase user."
+                                    );
+                                    router.push("/");
+                                });
+                            return;
+                        }
+                        //    Variables
+
+                        providerRef.value = getProvider(methods[0]);
+                        pendingCredRef.value = pendingCred;
+                    });
+                }
+            });
+
         return {
             ...toRefs(state),
             submitHandler,
             googleToLogin,
-            recaptchaVerifierHandler,
+
             githubToLogin,
+            githubToLoginRedirect,
+            mergeAccount,
+            pendingCredRef,
+            providerRef,
+            isMerged,
         };
     },
 };
 </script>
 
+
+
+
+<!-- css scoped style-->
 <style lang="scss">
 .form-container {
     border: 1px solid gray;
@@ -232,5 +441,32 @@ export default {
         padding: 4px;
         margin-left: 10px;
     }
+}
+</style>
+
+<!-- Using CSS Module 
+    Ex.
+    <template>
+       <h2 class='$style.h1'></h2>  
+    </template>
+    
+-->
+
+<style module>
+.h1 {
+    color: red;
+}
+</style>
+
+<!-- Using named CSS Module 
+    Ex.
+    <template>
+            <h2 class='$classes.h1'></h2>  
+    </template>
+    
+-->
+<style module="classes">
+.h1 {
+    color: red;
 }
 </style>

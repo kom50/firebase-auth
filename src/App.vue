@@ -1,33 +1,39 @@
 <template>
     <nav>
+        Firebase Auth <br />
         <router-link to="/">Home</router-link> |
         <router-link to="/about">About</router-link> |
         <router-link to="/register">Register</router-link> |
         <router-link to="/login">Login</router-link> |
         <router-link to="1" @click="logout">Logout</router-link>
+        |
+        <router-link to="/phone"> phone number</router-link> |
+        <router-link to="/Firestore"> FireStore </router-link>
         <router-view />
     </nav>
 </template>
 
 
 <script>
-import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
-import app from "./firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import auth from "./firebase";
 import { useStore } from "vuex";
+import { useRouter } from "vue-router";
 export default {
     setup() {
         const store = useStore();
-        const auth = getAuth(app);
-
+        const router = useRouter();
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 const uid = user.uid;
                 console.log("user", user);
                 store.commit("login", { user });
+                router.push("/");
             } else {
                 // User is signed out
                 console.log("logout", user);
                 store.commit("logout");
+                router.push("/login");
             }
         });
         console.log("currentUser", auth.currentUser);
@@ -48,6 +54,8 @@ export default {
     },
 };
 </script>
+
+
 <style lang="scss">
 #app {
     font-family: Avenir, Helvetica, Arial, sans-serif;
